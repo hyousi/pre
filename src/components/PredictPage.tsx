@@ -101,7 +101,7 @@ function SingleDayResult({ point, completedAt }: { point: DataPoint; completedAt
 
       {/* Footnote */}
       <p className="text-[11px] text-slate-400 text-center">
-        以上数值为 Prophet 时序模型预测结果，仅供参考
+        预测数据仅供参考
       </p>
     </div>
   )
@@ -229,10 +229,7 @@ export default function PredictPage({ user, onImport }: Props) {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-slate-800">{user.name}</h2>
-          <p className="text-xs text-slate-500">
-            历史数据 {user.rows} 条
-            {result ? ` · 最后一条：${result.last_known_date}` : ''}
-          </p>
+          <p className="text-xs text-slate-500">数据截止 {user.last_date ?? '未知'}</p>
         </div>
         <button
           onClick={onImport}
@@ -324,11 +321,6 @@ export default function PredictPage({ user, onImport }: Props) {
             ) : '开始预测'}
           </button>
 
-          {result && (
-            <span className="text-xs text-slate-400">
-              {result.predictions.length} 天预测结果 · Prophet 模型
-            </span>
-          )}
         </div>
 
         {error && (
