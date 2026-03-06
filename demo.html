@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>燃气管网智能预测系统 Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6; }
+        .input-group label { font-size: 0.85rem; font-weight: 600; color: #4b5563; }
+        .input-field { width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem; transition: border-color 0.2s; }
+        .input-field:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2); }
+        .btn-primary { background-color: #2563eb; color: white; padding: 0.75rem 1.5rem; border-radius: 0.375rem; font-weight: bold; transition: background-color 0.2s; }
+        .btn-primary:hover { background-color: #1d4ed8; }
+        .btn-primary:disabled { background-color: #93c5fd; cursor: not-allowed; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(-8px); }
+        .metric-card { transition: transform 0.2s, box-shadow 0.2s; }
+        .metric-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    </style>
+</head>
+<body>
+
+<div id="app" class="h-screen flex flex-col">
+    <!-- 顶部导航 -->
+    <header class="bg-slate-800 text-white p-4 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                燃气管网 AI 预测平台
+            </h1>
+            <span class="text-sm text-slate-400">演示版本 v1.9</span>
+        </div>
+    </header>
+
+    <!-- 主体内容 -->
+    <main class="flex-1 container mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- 左侧：数据录入面板 -->
+        <div class="lg:col-span-4 bg-white rounded-xl shadow-lg p-6 overflow-y-auto">
+            <h2 class="text-lg font-bold text-slate-800 mb-4 border-b pb-2">1. 数据录入</h2>
+            
+            <form @submit.prevent="handlePredict" class="space-y-4">
+                
+                <!-- 用户选择（始终显示） -->
+                <div class="input-group">
+                    <label>选择用户/区域 <span class="text-red-500">*</span></label>
+                    <select v-model="formData.user" @change="handleUserChange" class="input-field bg-gray-50" required>
+                        <option value="">-- 请选择 --</option>
+                        <option value="volvo">沃尔沃</option>
+                        <option value="faw_chengdu">成都一汽</option>
+                        <option value="faw_toyota">一汽丰田</option>
+                        <option value="calb">中航锂电</option>
+                    </select>
+                </div>
+
+                <!-- 管网参数（选择用户后显示，自动填充） -->
+                <transition name="fade">
+                    <div v-if="isUserSelected" class="space-y-4">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="input-group">
+                                <label>管网长度 (m)</label>
+                                <input type="number" v-model="formData.length" class="input-field bg-gray-50" placeholder="自动填充" readonly>
+                            </div>
+                            <div class="input-group">
+                                <label>管道直径 (mm)</label>
+                                <input type="number" v-model="formData.diameter" class="input-field bg-gray-50" placeholder="自动填充" readonly>
+                            </div>
+                        </div>
+
+                        <!-- 当前工况（用户手动填写） -->
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <h3 class="text-sm font-bold text-blue-800 mb-3 flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                当前工况（请手动填写）
+                            </h3>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="input-group">
+                                    <label>管道压力 (Mpa) <span class="text-red-500">*</span></label>
+                                    <input type="number" step="0.001" v-model="formData.pressure" class="input-field" placeholder="例如：0.35" required>
+                                </div>
+                                <div class="input-group">
+                                    <label>当日用气量 (m³) <span class="text-red-500">*</span></label>
+                                    <input type="number" v-model="formData.dailyGasUsage" class="input-field" placeholder="例如：70000" required>
+                                </div>
+                                <!-- 温度占满一行 -->
+                                <div class="input-group col-span-2">
+                                    <label>温度 (℃)</label>
+                                    <input type="number" v-model="formData.temp" class="input-field" placeholder="可选">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 日期选择（用户手动填写，颗粒度到天） -->
+                        <div class="grid grid-cols-1 gap-3">
+                            <div class="input-group">
+                                <label>历史参考日期 <span class="text-red-500">*</span></label>
+                                <input type="date" v-model="formData.historyDate" class="input-field" required>
+                            </div>
+                            <div class="input-group">
+                                <label>预测目标日期 <span class="text-red-500">*</span></label>
+                                <input type="date" v-model="formData.predictDate" class="input-field border-blue-300 bg-blue-50" required>
+                            </div>
+                        </div>
+
+                        <!-- 提交按钮 -->
+                        <button type="submit" :disabled="loading" class="btn-primary w-full flex justify-center items-center gap-2 mt-2">
+                            <span v-if="loading">
+                                <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                智能计算中...
+                            </span>
+                            <span v-else>🔮 开始预测</span>
+                        </button>
+                    </div>
+                </transition>
+                
+                <!-- 未选择用户时的提示 -->
+                <div v-if="!isUserSelected" class="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
+                    <svg class="w-14 h-14 mx-auto mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <p class="text-sm font-medium">请先选择用户/区域</p>
+                    <p class="text-xs mt-1 text-gray-300">系统将自动加载管网基础配置</p>
+                </div>
+            </form>
+        </div>
+
+        <!-- 右侧：预测结果面板 -->
+        <div class="lg:col-span-8 bg-white rounded-xl shadow-lg p-6 flex flex-col">
+            <div class="flex justify-between items-center mb-5 border-b pb-3">
+                <h2 class="text-lg font-bold text-slate-800">2. 预测结果</h2>
+                <div class="text-sm text-gray-500" v-if="result">
+                    <span class="inline-flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 rounded-full text-xs">
+                        <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                        已完成 {{ new Date().toLocaleTimeString('zh-CN') }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- 空状态提示 -->
+            <div v-if="!result" class="flex-1 min-h-[300px] flex flex-col items-center justify-center text-gray-400 bg-gray-50 rounded-lg border-2 border-dashed">
+                <svg class="w-20 h-20 mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                </svg>
+                <p class="text-center font-medium">等待预测任务</p>
+                <p class="text-xs mt-1 text-gray-300">填写参数后点击"开始预测"获取智能分析</p>
+            </div>
+
+            <!-- 🔺 预测结果卡片（3 项核心指标）-->
+            <transition name="fade">
+                <div v-if="result" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- 预测压力趋势 -->
+                    <div class="metric-card bg-gradient-to-br from-blue-50 to-indigo-50 p-5 rounded-xl border border-blue-100">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-medium text-blue-700">预测压力趋势</span>
+                            <span class="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">vs 历史</span>
+                        </div>
+                        <div class="flex items-end justify-center gap-2">
+                            <span class="text-3xl font-bold" :class="result.pressureTrend > 0 ? 'text-red-500' : 'text-green-500'">
+                                {{ result.pressureTrend > 0 ? '↑' : '↓' }}
+                            </span>
+                            <span class="text-2xl font-bold text-slate-800">{{ Math.abs(result.pressureTrend).toFixed(3) }}</span>
+                            <span class="text-sm text-gray-500 mb-1">Mpa</span>
+                        </div>
+                        <p class="text-xs text-center text-gray-500 mt-2">
+                            {{ result.pressureTrend > 0 ? '压力预计上升' : '压力预计下降' }}，注意调控
+                        </p>
+                    </div>
+
+                    <!-- 预测压力值 -->
+                    <div class="metric-card bg-gradient-to-br from-emerald-50 to-teal-50 p-5 rounded-xl border border-emerald-100">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-medium text-emerald-700">预测压力值</span>
+                            <span class="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full">目标日</span>
+                        </div>
+                        <div class="flex items-end justify-center gap-1">
+                            <span class="text-3xl font-bold text-emerald-600">{{ result.predictedPressure }}</span>
+                            <span class="text-sm text-gray-500 mb-1">Mpa</span>
+                        </div>
+                        <p class="text-xs text-center text-gray-500 mt-2">
+                            基于工况智能推算
+                        </p>
+                    </div>
+
+                    <!-- 预测用气量 -->
+                    <div class="metric-card bg-gradient-to-br from-amber-50 to-orange-50 p-5 rounded-xl border border-amber-100">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-medium text-amber-700">预测用气量</span>
+                            <span class="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">m³</span>
+                        </div>
+                        <div class="flex items-end justify-center gap-1">
+                            <span class="text-3xl font-bold text-amber-600">{{ result.predictedDailyGas.toLocaleString() }}</span>
+                        </div>
+                        <p class="text-xs text-center text-gray-500 mt-2">
+                            基于工况智能推算
+                        </p>
+                    </div>
+                </div>
+            </transition>
+
+            <!-- 附加说明 -->
+            <div v-if="result" class="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <h4 class="text-sm font-bold text-slate-700 mb-2">📋 预测说明</h4>
+                <ul class="text-xs text-slate-600 space-y-1.5 list-disc list-inside">
+                    <li>预测结果基于 {{ formData.user ? getUserLabel(formData.user) : '当前用户' }} 的管网配置（长度 {{ formData.length }}m / 直径 {{ formData.diameter }}mm）</li>
+                    <li>参考历史日期：{{ formData.historyDate }} → 预测目标日期：{{ formData.predictDate }}</li>
+                    <!-- 🔸 已删除匹配数据的提示 -->
+                    <li v-if="formData.user === 'calb' && !result.dataInRange" class="text-purple-600 font-medium">🎲 中航锂电专属模型：日期超出数据范围，采用标准区间随机生成</li>
+                    <li class="text-amber-600 font-medium">⚠️ 本结果为 AI 模拟预测，实际运行请以现场监测为准</li>
+                </ul>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+    const { createApp, reactive, ref } = Vue;
+
+    createApp({
+        setup() {
+            const loading = ref(false);
+            const result = ref(null);
+            const isUserSelected = ref(false);
+
+            // 🔹 中航锂电 2026 年 1-3 月实际数据（用于匹配查询）
+            const calbHistoricalData = [
+                { date: '2026-01-01', gas: 55818, pressure: 0.351555 },
+                { date: '2026-01-02', gas: 68665, pressure: 0.320906 },
+                { date: '2026-01-03', gas: 71167, pressure: 0.314984 },
+                { date: '2026-01-04', gas: 70179, pressure: 0.307844 },
+                { date: '2026-01-05', gas: 69594, pressure: 0.296242 },
+                { date: '2026-01-06', gas: 69667, pressure: 0.285133 },
+                { date: '2026-01-07', gas: 71345, pressure: 0.304516 },
+                { date: '2026-01-08', gas: 72682, pressure: 0.295938 },
+                { date: '2026-01-09', gas: 69550, pressure: 0.307594 },
+                { date: '2026-01-10', gas: 69758, pressure: 0.312602 },
+                { date: '2026-01-11', gas: 69486, pressure: 0.314281 },
+                { date: '2026-01-12', gas: 66179, pressure: 0.301250 },
+                { date: '2026-01-13', gas: 70013, pressure: 0.294289 },
+                { date: '2026-01-14', gas: 68992, pressure: 0.297312 },
+                { date: '2026-01-15', gas: 68409, pressure: 0.306195 },
+                { date: '2026-01-16', gas: 69819, pressure: 0.297859 },
+                { date: '2026-01-17', gas: 71965, pressure: 0.317672 },
+                { date: '2026-01-18', gas: 72669, pressure: 0.308695 },
+                { date: '2026-01-19', gas: 67725, pressure: 0.302289 },
+                { date: '2026-01-20', gas: 71487, pressure: 0.290812 },
+                { date: '2026-01-21', gas: 71254, pressure: 0.291297 },
+                { date: '2026-01-22', gas: 74676, pressure: 0.295508 },
+                { date: '2026-01-23', gas: 71542, pressure: 0.295391 },
+                { date: '2026-01-24', gas: 73504, pressure: 0.300484 },
+                { date: '2026-01-25', gas: 75991, pressure: 0.321945 },
+                { date: '2026-01-26', gas: 70166, pressure: 0.287453 },
+                { date: '2026-01-27', gas: 71216, pressure: 0.294352 },
+                { date: '2026-01-28', gas: 72452, pressure: 0.293922 },
+                { date: '2026-01-29', gas: 74661, pressure: 0.293344 },
+                { date: '2026-01-30', gas: 68136, pressure: 0.293742 },
+                { date: '2026-01-31', gas: 68286, pressure: 0.304633 },
+                { date: '2026-02-01', gas: 70239, pressure: 0.301922 },
+                { date: '2026-02-02', gas: 68128, pressure: 0.290141 },
+                { date: '2026-02-03', gas: 63971, pressure: 0.286875 },
+                { date: '2026-02-04', gas: 64047, pressure: 0.295508 },
+                { date: '2026-02-05', gas: 68725, pressure: 0.285469 },
+                { date: '2026-02-06', gas: 67879, pressure: 0.293164 },
+                { date: '2026-02-07', gas: 67880, pressure: 0.306070 },
+                { date: '2026-02-08', gas: 70529, pressure: 0.300023 },
+                { date: '2026-02-09', gas: 69966, pressure: 0.307203 },
+                { date: '2026-02-10', gas: 66886, pressure: 0.305609 },
+                { date: '2026-02-11', gas: 68486, pressure: 0.313641 },
+                { date: '2026-02-12', gas: 65051, pressure: 0.339281 },
+                { date: '2026-02-13', gas: 65453, pressure: 0.326703 },
+                { date: '2026-02-14', gas: 63311, pressure: 0.344562 },
+                { date: '2026-02-15', gas: 58299, pressure: 0.329328 },
+                { date: '2026-02-16', gas: 58493, pressure: 0.348500 },
+                { date: '2026-02-17', gas: 61141, pressure: 0.351336 },
+                { date: '2026-02-18', gas: 63238, pressure: 0.343008 },
+                { date: '2026-02-19', gas: 61150, pressure: 0.338914 },
+                { date: '2026-02-20', gas: 59408, pressure: 0.362758 },
+                { date: '2026-02-21', gas: 61337, pressure: 0.347008 },
+                { date: '2026-02-22', gas: 60899, pressure: 0.345633 },
+                { date: '2026-02-23', gas: 62842, pressure: 0.352312 },
+                { date: '2026-02-24', gas: 59286, pressure: 0.333938 },
+                { date: '2026-02-25', gas: 64084, pressure: 0.337789 },
+                { date: '2026-02-26', gas: 64561, pressure: 0.329727 },
+                { date: '2026-02-27', gas: 70761, pressure: 0.319078 },
+                { date: '2026-02-28', gas: 73615, pressure: 0.309156 },
+                { date: '2026-03-01', gas: 71527, pressure: 0.325273 },
+                { date: '2026-03-02', gas: 73183, pressure: 0.317609 },
+                { date: '2026-03-03', gas: 67807, pressure: 0.330156 },
+                { date: '2026-03-04', gas: 70423, pressure: 0.324938 },
+                { date: '2026-03-05', gas: 72501, pressure: 0.319406 }
+            ];
+
+            const formData = reactive({
+                user: '',
+                length: '',
+                diameter: '',
+                pressure: '',
+                dailyGasUsage: '',
+                temp: '',
+                historyDate: '',
+                predictDate: ''
+            });
+
+            // 用户标签映射
+            const userLabels = {
+                volvo: '沃尔沃',
+                faw_chengdu: '成都一汽',
+                faw_toyota: '一汽丰田',
+                calb: '中航锂电'
+            };
+            const getUserLabel = (val) => userLabels[val] || val;
+
+            // 用户选择处理
+            const handleUserChange = () => {
+                if (formData.user) {
+                    isUserSelected.value = true;
+                    
+                    const configs = {
+                        volvo: { length: 3500, diameter: 250 },
+                        faw_chengdu: { length: 5200, diameter: 300 },
+                        faw_toyota: { length: 4100, diameter: 280 },
+                        calb: { length: 6800, diameter: 350 }
+                    };
+                    
+                    if (configs[formData.user]) {
+                        formData.length = configs[formData.user].length;
+                        formData.diameter = configs[formData.user].diameter;
+                    }
+                    
+                    formData.pressure = '';
+                    formData.dailyGasUsage = '';
+                    formData.temp = '';
+                    formData.historyDate = '';
+                    formData.predictDate = '';
+                    
+                    result.value = null;
+                } else {
+                    isUserSelected.value = false;
+                    result.value = null;
+                }
+            };
+
+            // 🔹 辅助函数：生成 ±5% 偏差的值
+            const applyDeviation = (value, percent = 0.05) => {
+                const deviation = 1 + (Math.random() * 2 - 1) * percent;
+                return value * deviation;
+            };
+
+            // 🔹 辅助函数：完全随机生成（指定区间内）
+            const randomInRange = (min, max) => {
+                return Math.random() * (max - min) + min;
+            };
+
+            // 模拟预测算法
+            const handlePredict = async () => {
+                if (!formData.user || !formData.pressure || !formData.dailyGasUsage || !formData.historyDate || !formData.predictDate) {
+                    alert('⚠️ 请填写所有必填字段（标*项）');
+                    return;
+                }
+                
+                if (new Date(formData.predictDate) < new Date(formData.historyDate)) {
+                    alert('⚠️ 预测日期不能早于历史参考日期');
+                    return;
+                }
+
+                loading.value = true;
+                result.value = null;
+
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                const basePressure = parseFloat(formData.pressure);
+                const baseGas = parseFloat(formData.dailyGasUsage);
+                
+                let predictedPressure, predictedDailyGas, dataInRange = false;
+
+                // 🔹 中航锂电专属逻辑
+                if (formData.user === 'calb') {
+                    // 查找历史日期对应的实际数据
+                    const historyRecord = calbHistoricalData.find(d => d.date === formData.historyDate);
+                    
+                    if (historyRecord) {
+                        // ✅ 日期在数据范围内：使用实际数据 ±5% 偏差
+                        dataInRange = true;
+                        predictedDailyGas = Math.round(applyDeviation(historyRecord.gas, 0.05));
+                        predictedPressure = (applyDeviation(historyRecord.pressure, 0.05)).toFixed(3);
+                    } else {
+                        // ❌ 日期超出范围：完全随机生成
+                        dataInRange = false;
+                        predictedPressure = randomInRange(0.330, 0.360).toFixed(3);
+                        predictedDailyGas = Math.round(randomInRange(69000, 72000));
+                    }
+                } else {
+                    // 普通用户逻辑
+                    const temp = parseFloat(formData.temp) || 20;
+                    const tempFactor = (temp - 20) * 0.002;
+                    const noiseP = (Math.random() - 0.5) * 0.008;
+                    predictedPressure = (basePressure + tempFactor + noiseP).toFixed(3);
+                    
+                    const seasonalFactor = Math.sin((new Date(formData.predictDate).getMonth()) / 6 * Math.PI) * 0.15;
+                    const noiseG = (Math.random() - 0.5) * 60;
+                    predictedDailyGas = Math.round(baseGas * (1 + seasonalFactor) + noiseG);
+                }
+                
+                // 计算趋势
+                const pressureTrend = (parseFloat(predictedPressure) - basePressure).toFixed(3);
+
+                result.value = {
+                    predictedPressure,
+                    predictedDailyGas,
+                    pressureTrend,
+                    dataInRange
+                };
+
+                loading.value = false;
+            };
+
+            return {
+                formData,
+                loading,
+                result,
+                isUserSelected,
+                getUserLabel,
+                handleUserChange,
+                handlePredict
+            };
+        }
+    }).mount('#app');
+</script>
+
+</body>
+</html>
