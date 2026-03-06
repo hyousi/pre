@@ -1,0 +1,25 @@
+{
+  "n_train": 51,
+  "n_test": 13,
+  "lstm": {
+    "train_loss": 0.006423655711114406,
+    "test_mape_gas": 11.55756774913866,
+    "test_mape_pressure": 7.53230876255134,
+    "test_max_ape_gas": 17.8097575171122,
+    "test_max_ape_pressure": 13.823821711541108,
+    "epochs_trained": 400,
+    "passes_8pct": false
+  },
+  "prophet": {
+    "test_mape_gas": 12.438754115027097,
+    "test_max_ape_gas": 23.16994380055571,
+    "test_mape_pressure": 16.08020334021706,
+    "test_max_ape_pressure": 27.864843114283776,
+    "passes_8pct": false
+  },
+  "test_mape_gas": 11.55756774913866,
+  "test_mape_pressure": 7.53230876255134,
+  "test_max_ape_gas": 17.8097575171122,
+  "test_max_ape_pressure": 13.823821711541108,
+  "passes_8pct": false
+}

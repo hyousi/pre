@@ -1,0 +1,8 @@
+{
+  "default_calb": {
+    "id": "default_calb",
+    "name": "中航锂电（默认）",
+    "rows": 64,
+    "is_default": true
+  }
+}

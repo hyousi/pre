@@ -1,0 +1,39 @@
+# Node
+node_modules/
+dist/
+dist-electron/
+.vite/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+backend/.venv/
+backend/__pycache__/
+*.egg-info/
+backend-dist/
+
+# uv
+uv.lock
+
+# PyInstaller
+*.spec
+
+# Electron build output
+out/
+release/
+dist-electron/
+
+# Editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Model artifacts (large binary files, tracked separately)
+backend/data_store/**/*.pt
+
+# Env
+.env
+.env.local

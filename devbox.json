@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.13.7/.schema/devbox.schema.json",
+  "packages": [
+    "nodejs@22",
+    "python@3.11",
+    "uv@latest"
+  ],
+  "shell": {
+    "init_hook": [
+      "echo '燃气管网 AI 预测系统 — 开发环境已就绪'",
+      "echo ''",
+      "echo '  开发：'",
+      "echo '    devbox run install-all   安装全部依赖（首次）'",
+      "echo '    devbox run dev           启动完整开发环境（后端 + 前端 + Electron）'",
+      "echo '    devbox run backend       仅启动 Python 后端'",
+      "echo '    devbox run frontend      仅启动 Vite 前端'",
+      "echo '    devbox run electron      仅启动 Electron（需后端和前端已运行）'",
+      "echo ''",
+      "echo '  打包：'",
+      "echo '    devbox run pack          一键打包当前平台安装包'"
+    ],
+    "scripts": {
+      "install-all": "npm install && cd backend && uv sync --extra pack",
+      "dev": "npm run dev",
+      "backend": "cd backend && uv run uvicorn main:app --reload --port 8765",
+      "frontend": "npm run dev:renderer",
+      "electron": "NODE_ENV=development npx electron electron/main.cjs",
+      "pack": "npm run build"
+    }
+  }
+}

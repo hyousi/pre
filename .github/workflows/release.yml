@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # needed to create GitHub Release and upload assets
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            artifact_glob: 'release/*.dmg'
+          - os: windows-latest
+            platform: win
+            artifact_glob: 'release/*.exe'
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # ------------------------------------------------------------------
+      # 1. Source
+      # ------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------
+      # 2. Runtime setup
+      # ------------------------------------------------------------------
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: 'latest'
+
+      # macOS: ensure Rosetta is present so x64 binaries can run on Apple Silicon runners
+      - name: Install Rosetta (macOS)
+        if: matrix.os == 'macos-latest'
+        run: softwareupdate --install-rosetta --agree-to-license || true
+
+      # ------------------------------------------------------------------
+      # 3. Dependencies
+      # ------------------------------------------------------------------
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Python dependencies (including pyinstaller)
+        working-directory: backend
+        run: uv sync --extra pack
+
+      # ------------------------------------------------------------------
+      # 4. Build Python backend → backend-dist/gas_backend/
+      # ------------------------------------------------------------------
+      - name: Build Python backend (PyInstaller)
+        run: npm run build:backend
+
+      # ------------------------------------------------------------------
+      # 5. Build React renderer → dist/
+      # ------------------------------------------------------------------
+      - name: Build renderer (Vite + tsc)
+        run: npm run build:renderer
+
+      # ------------------------------------------------------------------
+      # 6. Package Electron app → release/
+      # ------------------------------------------------------------------
+      - name: Package Electron app (macOS .dmg)
+        if: matrix.os == 'macos-latest'
+        run: npx electron-builder --mac dmg
+        env:
+          # Skip macOS code signing (no Apple Developer account)
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Package Electron app (Windows NSIS)
+        if: matrix.os == 'windows-latest'
+        run: npx electron-builder --win nsis
+        env:
+          # Skip Windows code signing
+          WIN_CSC_LINK: ''
+
+      # ------------------------------------------------------------------
+      # 7. Upload to GitHub Release
+      # ------------------------------------------------------------------
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.artifact_glob }}
+          generate_release_notes: true
