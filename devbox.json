@@ -17,7 +17,10 @@
       "echo '    devbox run electron      仅启动 Electron（需后端和前端已运行）'",
       "echo ''",
       "echo '  打包：'",
-      "echo '    devbox run pack          一键打包当前平台安装包'"
+      "echo '    devbox run pack          一键打包当前平台安装包'",
+      "echo ''",
+      "echo '  数据：'",
+      "echo '    devbox run clear-data    清空后端所有用户数据及模型'"
     ],
     "scripts": {
       "install-all": "npm install && cd backend && uv sync --extra pack",
@@ -25,7 +28,8 @@
       "backend": "cd backend && uv run uvicorn main:app --reload --port 8765",
       "frontend": "npm run dev:renderer",
       "electron": "NODE_ENV=development npx electron electron/main.cjs",
-      "pack": "npm run build"
+      "pack": "npm run build",
+      "clear-data": "rm -rf backend/data_store && echo '已清空后端模型与用户数据'"
     }
   }
 }

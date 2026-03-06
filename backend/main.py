@@ -25,7 +25,7 @@ from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadF
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from trainer import load_xlsx_to_df, predict_next_14, train_model
+from trainer import load_xlsx_to_df, predict_dates, train_model
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -65,9 +65,7 @@ def _user_csv(user_id: str) -> Path:
 
 def _has_model(user_id: str) -> bool:
     d = _user_dir(user_id)
-    lstm_ok = (d / "lstm" / "model.pt").exists()
-    prophet_ok = (d / "prophet" / "gas_model.pkl").exists()
-    return lstm_ok or prophet_ok
+    return (d / "prophet" / "gas_model.pkl").exists()
 
 
 def _read_metrics(user_id: str) -> dict | None:
@@ -90,7 +88,7 @@ def _seed_default_user() -> None:
 
     user_id = "default_calb"
     user_dir = _user_dir(user_id)
-    user_dir.mkdir(exist_ok=True)
+    user_dir.mkdir(parents=True, exist_ok=True)
     csv_path = _user_csv(user_id)
 
     with xlsx_path.open("rb") as f:
@@ -138,19 +136,28 @@ def health():
 
 @app.get("/api/users")
 def list_users():
+    import pandas as pd
+
     users = _read_users()
     result = []
     for uid, meta in users.items():
         csv_path = _user_csv(uid)
         row_count = 0
+        last_date: str | None = None
         if csv_path.exists():
             with csv_path.open() as f:
-                row_count = sum(1 for _ in csv.reader(f)) - 1  # subtract header
+                row_count = sum(1 for _ in csv.reader(f)) - 1
+            try:
+                df = pd.read_csv(str(csv_path), parse_dates=["date"])
+                last_date = df["date"].max().strftime("%Y-%m-%d")
+            except Exception:
+                pass
         result.append(
             {
                 **meta,
                 "has_model": _has_model(uid),
                 "rows": row_count,
+                "last_date": last_date,
                 "metrics": _read_metrics(uid),
             }
         )
@@ -188,7 +195,7 @@ async def upload_data(
         user_id = f"{slug}_{uuid.uuid4().hex[:6]}"
 
     user_dir = _user_dir(user_id)
-    user_dir.mkdir(exist_ok=True)
+    user_dir.mkdir(parents=True, exist_ok=True)
     df.to_csv(_user_csv(user_id), index=False)
 
     users = _read_users()
@@ -317,28 +324,45 @@ def history(user_id: str, days: int = 30):
 
 
 @app.get("/api/predict/{user_id}")
-def predict(user_id: str, model: str = "lstm"):
+def predict(
+    user_id: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+):
     """
-    Return 14-day forecast for the given user.
-    Query param: model=lstm (default) | prophet
+    Return Prophet forecast for the given user.
+    - Without start/end_date: returns next 14 days.
+    - With start_date + end_date ('YYYY-MM-DD'): returns predictions for that range.
     """
     csv_path = _user_csv(user_id)
     if not csv_path.exists():
         raise HTTPException(status_code=404, detail="用户数据不存在")
     if not _has_model(user_id):
         raise HTTPException(status_code=412, detail="模型尚未训练，请先训练")
-    if model not in ("lstm", "prophet"):
-        raise HTTPException(status_code=400, detail="model 参数须为 lstm 或 prophet")
 
     model_dir = str(_user_dir(user_id))
+
+    # Resolve default date range (next 14 days) when not specified
+    if not start_date or not end_date:
+        import pandas as pd
+        df = pd.read_csv(str(csv_path), parse_dates=["date"])
+        last = df["date"].max()
+        start_date = (last + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        end_date = (last + pd.Timedelta(days=14)).strftime("%Y-%m-%d")
+
     try:
-        predictions, last_date = predict_next_14(str(csv_path), model_dir, model_type=model)
+        predictions, last_date = predict_dates(
+            str(csv_path), model_dir,
+            start_date=start_date, end_date=end_date,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"预测失败：{e}") from e
 
     return {
         "user_id": user_id,
-        "model_used": model,
+        "model_used": "prophet",
         "last_known_date": last_date,
         "predictions": predictions,
     }

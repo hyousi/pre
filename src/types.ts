@@ -1,24 +1,15 @@
-export interface ModelMetrics {
-  test_mape_gas: number
-  test_mape_pressure: number
-  test_max_ape_gas: number
-  test_max_ape_pressure: number
-  passes_8pct: boolean
-  train_loss?: number
-  epochs_trained?: number
-}
-
-export interface CombinedMetrics {
+export interface Metrics {
   n_train: number
   n_test: number
-  lstm: ModelMetrics
-  prophet: ModelMetrics
   test_mape_gas: number
   test_mape_pressure: number
   test_max_ape_gas: number
   test_max_ape_pressure: number
   passes_8pct: boolean
 }
+
+// Legacy alias kept so older references compile
+export type CombinedMetrics = Metrics
 
 export interface User {
   id: string
@@ -26,7 +17,8 @@ export interface User {
   rows: number
   is_default: boolean
   has_model: boolean
-  metrics: CombinedMetrics | null
+  last_date: string | null
+  metrics: Metrics | null
 }
 
 export interface DataPoint {
@@ -42,4 +34,4 @@ export interface PredictionResult {
   predictions: DataPoint[]
 }
 
-export type ModelType = 'lstm' | 'prophet'
+export type ModelType = 'prophet'

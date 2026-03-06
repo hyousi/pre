@@ -1,16 +1,16 @@
 import { useState } from 'react'
-import type { DataPoint, ModelType, User } from '../types'
+import type { DataPoint, User } from '../types'
 
 interface Props {
   user: User
   predictions: DataPoint[]
-  model: ModelType
+  model?: string   // optional, for display only
 }
 
 const API_KEY_STORAGE = 'gas_llm_api_key'
 const API_URL_STORAGE = 'gas_llm_api_url'
 
-function buildPrompt(user: User, predictions: DataPoint[], model: ModelType): string {
+function buildPrompt(user: User, predictions: DataPoint[]): string {
   const first = predictions[0]
   const last = predictions[predictions.length - 1]
   const avgGas = predictions.reduce((s, p) => s + p.gas, 0) / predictions.length
@@ -21,15 +21,15 @@ function buildPrompt(user: User, predictions: DataPoint[], model: ModelType): st
   return `你是一位城市燃气管网运营专家，请根据以下 AI 预测数据，用简洁专业的中文写一段 2-3 句话的分析点评（不超过 150 字），重点关注供气安全和调度建议。
 
 用户：${user.name}
-预测模型：${model.toUpperCase()}
-预测时段：${first.date} 至 ${last.date}（未来 14 天）
+预测模型：Prophet
+预测时段：${first.date} 至 ${last.date}
 用气量摘要：平均 ${Math.round(avgGas).toLocaleString()} m³，峰值 ${Math.round(maxGas).toLocaleString()} m³，谷值 ${Math.round(minGas).toLocaleString()} m³
 压力摘要：平均 ${avgPres.toFixed(3)} MPa
 
 请直接输出点评文字，无需标题或前缀。`
 }
 
-export default function CommentPanel({ user, predictions, model }: Props) {
+export default function CommentPanel({ user, predictions }: Props) {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY_STORAGE) ?? '')
   const [apiUrl, setApiUrl] = useState(() => localStorage.getItem(API_URL_STORAGE) ?? 'https://api.openai.com/v1')
   const [comment, setComment] = useState('')
@@ -56,7 +56,7 @@ export default function CommentPanel({ user, predictions, model }: Props) {
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
-          messages: [{ role: 'user', content: buildPrompt(user, predictions, model) }],
+          messages: [{ role: 'user', content: buildPrompt(user, predictions) }],
           max_tokens: 200,
           temperature: 0.7,
         }),

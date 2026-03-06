@@ -1,7 +1,7 @@
 import axios from 'axios'
-import type { CombinedMetrics, DataPoint, ModelType, PredictionResult, User } from './types'
+import type { DataPoint, Metrics, PredictionResult, User } from './types'
 
-const BASE: string = import.meta.env.VITE_API_BASE ?? 'http://localhost:8765'
+const BASE: string = (import.meta as any).env?.VITE_API_BASE ?? 'http://localhost:8765'
 
 const http = axios.create({ baseURL: BASE })
 
@@ -32,17 +32,18 @@ export async function uploadData(
   return res.data
 }
 
-export async function trainModel(userId: string): Promise<{ user_id: string; metrics: CombinedMetrics }> {
+export async function trainModel(userId: string): Promise<{ user_id: string; metrics: Metrics }> {
   const res = await http.post('/api/train', { user_id: userId })
   return res.data
 }
 
-export async function fetchPredictions(
+export async function predictByRange(
   userId: string,
-  model: ModelType = 'lstm',
+  startDate: string,   // 'YYYY-MM-DD'
+  endDate: string,     // 'YYYY-MM-DD'
 ): Promise<PredictionResult> {
   const res = await http.get<PredictionResult>(`/api/predict/${userId}`, {
-    params: { model },
+    params: { start_date: startDate, end_date: endDate },
   })
   return res.data
 }
