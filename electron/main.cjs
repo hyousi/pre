@@ -114,7 +114,7 @@ function createWindow() {
     height: 840,
     minWidth: 1024,
     minHeight: 640,
-    title: '燃气管网 AI 预测系统',
+    title: '燃气管网预测平台',
     backgroundColor: '#f3f4f6',
     webPreferences: {
       contextIsolation: true,
@@ -147,7 +147,7 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   // Set app name shown in macOS menu bar / dock
-  app.setName('燃气管网 AI 预测系统')
+  app.setName('燃气管网预测平台')
 
   startBackend()
 

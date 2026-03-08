@@ -2,7 +2,7 @@
   "name": "gas-prediction",
   "version": "0.1.0",
   "type": "module",
-  "description": "燃气管网 AI 预测系统",
+  "description": "燃气管网预测平台",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k -n backend,renderer,electron \"npm run dev:backend\" \"npm run dev:renderer\" \"npm run dev:electron\"",
@@ -41,7 +41,7 @@
   },
   "build": {
     "appId": "com.gas.prediction",
-    "productName": "燃气管网 AI 预测系统",
+    "productName": "燃气管网预测平台",
     "asar": true,
     "files": [
       "dist/**/*",

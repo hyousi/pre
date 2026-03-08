@@ -14,7 +14,7 @@ export default function EmptyState({ onStart }: Props) {
           </svg>
         </div>
 
-        <h1 className="text-xl font-bold text-slate-800 mb-2">燃气管网 AI 预测系统</h1>
+        <h1 className="text-xl font-bold text-slate-800 mb-2">燃气管网预测平台</h1>
         <p className="text-slate-500 text-sm mb-8 leading-relaxed">
           还没有任何用气模型。<br />
           请先录入用户/区域的历史数据，系统将自动完成训练。

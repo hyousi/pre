@@ -116,7 +116,6 @@ export default function ImportPage({ users, onUploaded, onCancel }: Props) {
               type="text"
               value={userName}
               onChange={e => setUserName(e.target.value)}
-              placeholder="例如：中航锂电"
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
             />
           </div>

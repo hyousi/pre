@@ -1,16 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { checkHealth, fetchUsers } from './api'
+import { checkHealth, fetchTasks, fetchUsers, resetApp, submitTrain } from './api'
 import EmptyState from './components/EmptyState'
 import ImportPage from './components/ImportPage'
 import PredictPage from './components/PredictPage'
-import TrainingProgress from './components/TrainingProgress'
-import TrainingSuccess from './components/TrainingSuccess'
+import TaskListPage from './components/TaskListPage'
 import UserSelector from './components/UserSelector'
-import type { Metrics, User } from './types'
+import type { User } from './types'
 
-type Page = 'init' | 'empty' | 'import' | 'training' | 'trained' | 'predict'
+type Page = 'init' | 'empty' | 'import' | 'tasks' | 'predict'
 
-// Detect macOS Electron — preload exposes window.electronAPI.platform
 const isMacElectron =
   typeof window !== 'undefined' &&
   (window as any).electronAPI?.platform === 'darwin'
@@ -37,10 +35,6 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [online, setOnline] = useState<boolean | null>(null)
 
-  // Set during import → training flow
-  const [pendingUserId, setPendingUserId] = useState<string | null>(null)
-  const [trainedMetrics, setTrainedMetrics] = useState<Metrics | null>(null)
-
   const refreshUsers = useCallback(async () => {
     try {
       const list = await fetchUsers()
@@ -51,13 +45,12 @@ export default function App() {
     }
   }, [])
 
-  // Init: health check + decide starting page
   useEffect(() => {
     const init = async () => {
       const alive = await checkHealth()
       setOnline(alive)
       if (!alive) {
-        setPage('empty') // will show offline banner via online===false check
+        setPage('empty')
         return
       }
       const list = await refreshUsers()
@@ -67,7 +60,6 @@ export default function App() {
     }
     init()
 
-    // Periodic health check
     const interval = setInterval(async () => {
       const alive = await checkHealth()
       setOnline(alive)
@@ -75,40 +67,43 @@ export default function App() {
     return () => clearInterval(interval)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Called when ImportPage finishes uploading
-  const handleUploaded = (userId: string) => {
-    setPendingUserId(userId)
-    setPage('training')
+  const handleUploaded = async (userId: string) => {
+    try {
+      await submitTrain(userId)
+    } catch { /* task list will show the error */ }
+    setPage('tasks')
   }
 
-  // Called when TrainingProgress SSE completes
-  const handleTrainingDone = async (metrics: Metrics) => {
-    setTrainedMetrics(metrics)
+  const handleTasksBack = async () => {
     const list = await refreshUsers()
-    const trained = list.find(u => u.id === pendingUserId)
-    if (trained) setCurrentUser(trained)
-    setPage('trained')
+    const hasModel = list.some(u => u.has_model)
+    if (hasModel) {
+      const trained = list.find(u => u.has_model)
+      if (trained) setCurrentUser(trained)
+      setPage('predict')
+      return
+    }
+    // No model yet — check if there are active tasks; if so, stay on task list
+    try {
+      const tasks = await fetchTasks()
+      if (tasks.some(t => t.status === 'pending' || t.status === 'training')) {
+        return // stay on tasks page
+      }
+    } catch { /* ignore */ }
+    setPage('empty')
   }
 
-  // Called from TrainingSuccess "开始预测" button
-  const handleStartPredict = () => {
-    setPage('predict')
-  }
-
-  const showHeader = page === 'predict'
+  const showHeader = page === 'predict' || page === 'tasks'
 
   return (
     <div className="h-screen flex flex-col bg-gray-100">
 
-      {/* Header — only shown on predict page */}
       {showHeader && <div className={`bg-slate-800 ${isMacElectron ? 'h-8' : 'h-3'}`} />}
       {showHeader && (
         <header
-          className={`bg-slate-800 text-white px-5 pb-3 shadow-md flex items-center justify-between flex-shrink-0`}
+          className="bg-slate-800 text-white px-5 pb-3 shadow-md flex items-center justify-between flex-shrink-0"
           style={isMacElectron ? { WebkitAppRegion: 'drag' } as React.CSSProperties : undefined}
         >
-          
-          {/* Left: title */}
           <div
             className="flex items-center gap-2.5"
             style={isMacElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
@@ -117,25 +112,56 @@ export default function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                 d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
             </svg>
-            <span className="text-sm font-bold tracking-tight">燃气管网 AI 预测系统</span>
+            <span className="text-sm font-bold tracking-tight">燃气管网预测平台</span>
           </div>
 
-          {/* Right: nav + status */}
           <div
             className="flex items-center gap-3"
             style={isMacElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
           >
-            <UserSelector
-              users={users}
-              current={currentUser}
-              onChange={u => setCurrentUser(u)}
-              onRefresh={refreshUsers}
-            />
+            {page === 'predict' && (
+              <>
+                <UserSelector
+                  users={users}
+                  current={currentUser}
+                  onChange={u => setCurrentUser(u)}
+                  onRefresh={refreshUsers}
+                />
+                <button
+                  onClick={() => setPage('import')}
+                  className="px-3 py-1.5 text-sm rounded-lg text-slate-300 hover:bg-slate-700 transition-colors border border-slate-600"
+                >
+                  + 录入数据
+                </button>
+              </>
+            )}
             <button
-              onClick={() => setPage('import')}
-              className="px-3 py-1.5 text-sm rounded-lg text-slate-300 hover:bg-slate-700 transition-colors border border-slate-600"
+              onClick={() => setPage(page === 'tasks' ? 'predict' : 'tasks')}
+              className={`px-3 py-1.5 text-sm rounded-lg transition-colors border ${
+                page === 'tasks'
+                  ? 'bg-slate-700 text-white border-slate-500'
+                  : 'text-slate-300 hover:bg-slate-700 border-slate-600'
+              }`}
             >
-              + 录入数据
+              训练任务
+            </button>
+            <button
+              onClick={async () => {
+                if (!confirm('确定要清空所有数据和模型吗？此操作不可恢复。')) return
+                try {
+                  await resetApp()
+                  setUsers([])
+                  setCurrentUser(null)
+                  setPage('empty')
+                } catch { /* ignore */ }
+              }}
+              className="px-2.5 py-1.5 text-xs rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-700 transition-colors"
+              title="清空所有数据并重置应用"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
             </button>
             <div className="flex items-center gap-1.5 pl-1 border-l border-slate-700">
               <span className={`w-2 h-2 rounded-full ${online === null ? 'bg-slate-400' : online ? 'bg-emerald-400' : 'bg-red-400'}`} />
@@ -147,7 +173,6 @@ export default function App() {
         </header>
       )}
 
-      {/* Main content */}
       <main className="flex-1 overflow-auto">
         {online === false && page !== 'init' ? (
           <BackendOfflineBanner />
@@ -166,15 +191,17 @@ export default function App() {
             onUploaded={handleUploaded}
             onCancel={users.some(u => u.has_model) ? () => setPage('predict') : undefined}
           />
-        ) : page === 'training' && pendingUserId ? (
-          <TrainingProgress
-            userId={pendingUserId}
-            onDone={handleTrainingDone}
-          />
-        ) : page === 'trained' && trainedMetrics ? (
-          <TrainingSuccess
-            metrics={trainedMetrics}
-            onStart={handleStartPredict}
+        ) : page === 'tasks' ? (
+          <TaskListPage
+            onBack={handleTasksBack}
+            onSelectUser={async (userId) => {
+              const list = await refreshUsers()
+              const user = list.find(u => u.id === userId)
+              if (user) {
+                setCurrentUser(user)
+                setPage('predict')
+              }
+            }}
           />
         ) : page === 'predict' && currentUser ? (
           <PredictPage

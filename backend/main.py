@@ -5,8 +5,9 @@ Endpoints:
   GET  /health
   GET  /api/users
   POST /api/upload
-  POST /api/train          (synchronous; returns when training is done)
-  POST /api/train/stream   (SSE progress stream)
+  POST /api/train              (async — returns task_id immediately)
+  GET  /api/tasks              (list all training tasks)
+  GET  /api/tasks/{task_id}    (single task detail)
   GET  /api/predict/{user_id}
   DELETE /api/users/{user_id}
 """
@@ -16,14 +17,15 @@ from __future__ import annotations
 import csv
 import json
 import os
+import threading
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 
 from trainer import load_xlsx_to_df, predict_dates, train_model
 
@@ -32,8 +34,6 @@ from trainer import load_xlsx_to_df, predict_dates, train_model
 # ---------------------------------------------------------------------------
 
 ROOT_DIR = Path(__file__).parent
-# In production (packaged), Electron passes DATA_STORE_PATH pointing to the
-# platform-standard user-data directory so data survives app updates.
 DATA_ROOT = Path(os.environ.get("DATA_STORE_PATH", str(ROOT_DIR / "data_store")))
 USERS_FILE = DATA_ROOT / "users.json"
 DATA_ROOT.mkdir(parents=True, exist_ok=True)
@@ -77,24 +77,19 @@ def _read_metrics(user_id: str) -> dict | None:
 
 
 def _seed_default_user() -> None:
-    """On first launch, seed the bundled data.xlsx as the default user."""
     xlsx_path = ROOT_DIR.parent / "data.xlsx"
     if not xlsx_path.exists():
         return
-
     users = _read_users()
     if any(u.get("is_default") for u in users.values()):
-        return   # already seeded
-
+        return
     user_id = "default_calb"
     user_dir = _user_dir(user_id)
     user_dir.mkdir(parents=True, exist_ok=True)
     csv_path = _user_csv(user_id)
-
     with xlsx_path.open("rb") as f:
         df = load_xlsx_to_df(f.read())
     df.to_csv(csv_path, index=False)
-
     users[user_id] = {
         "id": user_id,
         "name": "中航锂电（默认）",
@@ -102,6 +97,75 @@ def _seed_default_user() -> None:
         "is_default": True,
     }
     _write_users(users)
+
+
+# ---------------------------------------------------------------------------
+# In-memory task store
+# ---------------------------------------------------------------------------
+
+_tasks_lock = threading.Lock()
+_tasks: dict[str, dict[str, Any]] = {}
+
+
+def _create_task(user_id: str, user_name: str) -> dict[str, Any]:
+    task = {
+        "id": uuid.uuid4().hex[:12],
+        "user_id": user_id,
+        "user_name": user_name,
+        "status": "pending",
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "started_at": None,
+        "completed_at": None,
+        "metrics": None,
+        "error": None,
+    }
+    with _tasks_lock:
+        _tasks[task["id"]] = task
+    return task
+
+
+def _update_task(task_id: str, **fields: Any) -> None:
+    with _tasks_lock:
+        if task_id in _tasks:
+            _tasks[task_id].update(fields)
+
+
+def _get_task(task_id: str) -> dict[str, Any] | None:
+    with _tasks_lock:
+        return _tasks.get(task_id, None)
+
+
+def _all_tasks() -> list[dict[str, Any]]:
+    with _tasks_lock:
+        return sorted(_tasks.values(), key=lambda t: t["created_at"], reverse=True)
+
+
+def _run_training(task_id: str, user_id: str, user_name: str) -> None:
+    """Executed in a background thread."""
+    import time
+    _update_task(
+        task_id,
+        status="training",
+        started_at=datetime.now().isoformat(timespec="seconds"),
+    )
+    csv_path = str(_user_csv(user_id))
+    model_dir = str(_user_dir(user_id))
+    try:
+        # time.sleep(15)  # TODO: remove artificial delay
+        metrics = train_model(csv_path, model_dir, user_name=user_name)
+        _update_task(
+            task_id,
+            status="done",
+            completed_at=datetime.now().isoformat(timespec="seconds"),
+            metrics=metrics,
+        )
+    except Exception as e:
+        _update_task(
+            task_id,
+            status="error",
+            completed_at=datetime.now().isoformat(timespec="seconds"),
+            error=str(e),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -170,11 +234,6 @@ async def upload_data(
     user_name: str = Form(...),
     user_id: str = Form(default=""),
 ):
-    """
-    Accept an xlsx file for a user.
-    - If user_id is empty, create a new user (slug from name + short uuid).
-    - If user_id is provided, replace that user's data.
-    """
     if not file.filename or not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="仅支持 .xlsx / .xls 文件")
 
@@ -221,9 +280,8 @@ async def upload_data(
 @app.post("/api/train")
 def train(body: dict):
     """
-    Synchronous training endpoint.
-    Body: {"user_id": "..."}
-    Returns training metrics when complete.
+    Async training: validates inputs, creates a task, starts a background
+    thread, and returns the task immediately.
     """
     user_id: str = body.get("user_id", "")
     if not user_id:
@@ -234,93 +292,28 @@ def train(body: dict):
         raise HTTPException(status_code=404, detail="用户数据不存在，请先上传")
 
     user_name = _read_users().get(user_id, {}).get("name", user_id)
-    model_dir = str(_user_dir(user_id))
-    try:
-        metrics = train_model(str(csv_path), model_dir, user_name=user_name)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"训练失败：{e}") from e
-
-    return {"user_id": user_id, "metrics": metrics}
-
-
-@app.get("/api/train/stream/{user_id}")
-async def train_stream(user_id: str, background_tasks: BackgroundTasks):
-    """
-    SSE stream that emits training progress events.
-    Client receives: data: {"epoch": N, "loss": F, "done": false}
-    Finished:        data: {"done": true, "metrics": {...}}
-    """
-    csv_path = _user_csv(user_id)
-    if not csv_path.exists():
-        raise HTTPException(status_code=404, detail="用户数据不存在，请先上传")
-
-    import asyncio
-    import queue
-    import threading
-
-    progress_q: queue.Queue = queue.Queue()
-    model_dir = str(_user_dir(user_id))
-
-    def run_training():
-        try:
-            # Patch trainer to emit progress via the queue
-            import trainer as _t
-            original_train = _t.train_model
-
-            def patched_train(csv_p, m_dir, **kw):
-                # We can't easily hook into the loop without refactoring trainer,
-                # so just run it and send done signal.
-                result = original_train(csv_p, m_dir, **kw)
-                progress_q.put({"done": True, "metrics": result})
-                return result
-
-            patched_train(str(csv_path), model_dir)
-        except Exception as e:
-            progress_q.put({"done": True, "error": str(e)})
-
-    thread = threading.Thread(target=run_training, daemon=True)
+    task = _create_task(user_id, user_name)
+    thread = threading.Thread(
+        target=_run_training,
+        args=(task["id"], user_id, user_name),
+        daemon=True,
+    )
     thread.start()
 
-    async def event_generator():
-        yield "data: {\"status\": \"started\"}\n\n"
-        while True:
-            await asyncio.sleep(0.2)
-            try:
-                msg = progress_q.get_nowait()
-                yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
-                if msg.get("done"):
-                    break
-            except queue.Empty:
-                yield ": ping\n\n"  # keep-alive
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return {"task": task}
 
 
-@app.get("/api/history/{user_id}")
-def history(user_id: str, days: int = 30):
-    """Return the last N days of actual recorded data for charting."""
-    import pandas as pd
+@app.get("/api/tasks")
+def list_tasks():
+    return {"tasks": _all_tasks()}
 
-    csv_path = _user_csv(user_id)
-    if not csv_path.exists():
-        raise HTTPException(status_code=404, detail="用户数据不存在")
 
-    df = pd.read_csv(str(csv_path), parse_dates=["date"])
-    df = df.sort_values("date").tail(days)
-
-    return {
-        "user_id": user_id,
-        "history": [
-            {
-                "date": row["date"].strftime("%Y-%m-%d"),
-                "gas": round(float(row["gas"]), 2),
-                "pressure": round(float(row["pressure"]), 6),
-            }
-            for _, row in df.iterrows()
-        ],
-    }
+@app.get("/api/tasks/{task_id}")
+def get_task(task_id: str):
+    task = _get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return {"task": task}
 
 
 @app.get("/api/predict/{user_id}")
@@ -329,11 +322,6 @@ def predict(
     start_date: str | None = None,
     end_date: str | None = None,
 ):
-    """
-    Return Prophet forecast for the given user.
-    - Without start/end_date: returns next 14 days.
-    - With start_date + end_date ('YYYY-MM-DD'): returns predictions for that range.
-    """
     csv_path = _user_csv(user_id)
     if not csv_path.exists():
         raise HTTPException(status_code=404, detail="用户数据不存在")
@@ -342,7 +330,6 @@ def predict(
 
     model_dir = str(_user_dir(user_id))
 
-    # Resolve default date range (next 14 days) when not specified
     if not start_date or not end_date:
         import pandas as pd
         df = pd.read_csv(str(csv_path), parse_dates=["date"])
@@ -370,7 +357,6 @@ def predict(
 
 @app.delete("/api/users/{user_id}")
 def delete_user(user_id: str):
-    """Remove a user and all their data / model files."""
     import shutil
 
     users = _read_users()
@@ -384,3 +370,20 @@ def delete_user(user_id: str):
     del users[user_id]
     _write_users(users)
     return {"deleted": user_id}
+
+
+@app.post("/api/reset")
+def reset_all():
+    """Wipe all user data, models, and in-memory tasks. Equivalent to `devbox run clear-data`."""
+    import shutil
+
+    # Clear disk
+    if DATA_ROOT.exists():
+        shutil.rmtree(DATA_ROOT)
+    DATA_ROOT.mkdir(parents=True, exist_ok=True)
+
+    # Clear in-memory task store
+    with _tasks_lock:
+        _tasks.clear()
+
+    return {"status": "ok"}

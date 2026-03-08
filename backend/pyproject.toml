@@ -1,7 +1,7 @@
 [project]
 name = "gas-prediction-backend"
 version = "0.1.0"
-description = "燃气管网 AI 预测系统 — Python 后端"
+description = "燃气管网预测平台 — Python 后端"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110.0",

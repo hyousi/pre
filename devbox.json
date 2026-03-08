@@ -7,7 +7,7 @@
   ],
   "shell": {
     "init_hook": [
-      "echo '燃气管网 AI 预测系统 — 开发环境已就绪'",
+      "echo '燃气管网预测平台 — 开发环境已就绪'",
       "echo ''",
       "echo '  开发：'",
       "echo '    devbox run install-all   安装全部依赖（首次）'",
@@ -29,7 +29,7 @@
       "frontend": "npm run dev:renderer",
       "electron": "NODE_ENV=development npx electron electron/main.cjs",
       "pack": "npm run build",
-      "clear-data": "rm -rf backend/data_store && echo '已清空后端模型与用户数据'"
+      "clear-data": "rm -rf backend/data_store && echo '已清空后端所有用户数据、模型及训练任务（重启后端生效）'"
     }
   }
 }

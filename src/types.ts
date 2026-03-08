@@ -35,3 +35,17 @@ export interface PredictionResult {
 }
 
 export type ModelType = 'prophet'
+
+export type TaskStatus = 'pending' | 'training' | 'done' | 'error'
+
+export interface TrainTask {
+  id: string
+  user_id: string
+  user_name: string
+  status: TaskStatus
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+  metrics: Metrics | null
+  error: string | null
+}

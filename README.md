@@ -10,8 +10,8 @@ git push origin v0.1.0
 ```
 
 Actions 约 20-30 分钟完成，GitHub Release 页面会自动出现：
-- `燃气管网 AI 预测系统-0.1.0.dmg`（macOS）
-- `燃气管网 AI 预测系统 Setup 0.1.0.exe`（Windows）
+- `燃气管网预测平台-0.1.0.dmg`（macOS）
+- `燃气管网预测平台 Setup 0.1.0.exe`（Windows）
 
 ### 本地构建（当前平台验证）
 
@@ -64,7 +64,7 @@ npm run build:electron   # electron-builder → release/
 
 ## Training Metrics
 
-### 未知用户（2026-03-06 训练）
+### 345（2026-03-08 训练）
 
 **数据集：** 训练集 51 条 / 测试集 13 条（时间分割 80/20）
 
@@ -76,4 +76,4 @@ npm run build:electron   # electron-builder → release/
 | 压力最大 APE | 27.86% |
 | 达到 8% 要求 | ✗ |
 
-> 更新时间：2026-03-06 23:48:22
+> 更新时间：2026-03-08 14:46:45

@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { DataPoint, Metrics, PredictionResult, User } from './types'
+import type { DataPoint, Metrics, PredictionResult, TrainTask, User } from './types'
 
 const BASE: string = (import.meta as any).env?.VITE_API_BASE ?? 'http://localhost:8765'
 
@@ -32,9 +32,19 @@ export async function uploadData(
   return res.data
 }
 
-export async function trainModel(userId: string): Promise<{ user_id: string; metrics: Metrics }> {
-  const res = await http.post('/api/train', { user_id: userId })
-  return res.data
+export async function submitTrain(userId: string): Promise<TrainTask> {
+  const res = await http.post<{ task: TrainTask }>('/api/train', { user_id: userId })
+  return res.data.task
+}
+
+export async function fetchTasks(): Promise<TrainTask[]> {
+  const res = await http.get<{ tasks: TrainTask[] }>('/api/tasks')
+  return res.data.tasks
+}
+
+export async function fetchTask(taskId: string): Promise<TrainTask> {
+  const res = await http.get<{ task: TrainTask }>(`/api/tasks/${taskId}`)
+  return res.data.task
 }
 
 export async function predictByRange(
@@ -60,4 +70,8 @@ export async function fetchHistory(
 
 export async function deleteUser(userId: string): Promise<void> {
   await http.delete(`/api/users/${userId}`)
+}
+
+export async function resetApp(): Promise<void> {
+  await http.post('/api/reset')
 }
