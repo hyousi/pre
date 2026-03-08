@@ -17,9 +17,6 @@ backend-dist/
 # uv
 uv.lock
 
-# PyInstaller
-*.spec
-
 # Electron build output
 out/
 release/
@@ -37,3 +34,7 @@ backend/data_store/**/*.pt
 # Env
 .env
 .env.local
+build
+release
+backend/data_store
+xlsx
